@@ -94,15 +94,17 @@ class ChatGPTAPI(Base):
             or environ.get(PROMPT_ENV_MAP["user"])
             or self.DEFAULT_PROMPT
         )
-        self.prompt_sys_msg = (
-            prompt_sys_msg
-            or environ.get(
-                "OPENAI_API_SYS_MSG",
-            )  # XXX: for backward compatibility, deprecate soon
-            or environ.get(PROMPT_ENV_MAP["system"])
-            or ""
-        )
-        self.system_content = environ.get("OPENAI_API_SYS_MSG") or ""
+        # If prompt_sys_msg is explicitly provided, use it; otherwise fall back to environment variables
+        if prompt_sys_msg is not None:
+            self.prompt_sys_msg = prompt_sys_msg
+            self.system_content = prompt_sys_msg
+        else:
+            self.prompt_sys_msg = (
+                environ.get("OPENAI_API_SYS_MSG")
+                or environ.get(PROMPT_ENV_MAP["system"])
+                or ""
+            )
+            self.system_content = environ.get("OPENAI_API_SYS_MSG") or ""
         self.deployment_id = None
         self.temperature = temperature
         self.model_list = None
