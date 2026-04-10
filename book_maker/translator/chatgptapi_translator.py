@@ -7,7 +7,7 @@ from itertools import cycle
 import json
 from threading import Lock
 
-from openai import AzureOpenAI, NotFoundError, OpenAI, RateLimitError
+from openai import AzureOpenAI, NotFoundError, OpenAI, RateLimitError, BadRequestError
 from rich import print
 from tenacity import (
     retry,
@@ -162,6 +162,7 @@ class ChatGPTAPI(Base):
         """Test if the server supports structured outputs (strict json schema)"""
         try:
             test_messages = [{"role": "user", "content": "Say 'test'"}]
+            print("[cyan]Testing JSON schema support...[/cyan]")
             self.openai_client.chat.completions.create(
                 model=self.model,
                 messages=test_messages,
@@ -172,12 +173,25 @@ class ChatGPTAPI(Base):
                 },
             )
             self._use_structured_outputs = True
-        except Exception:
-            self._use_structured_outputs = False
-            print(
-                "[yellow]ℹ Server doesn't support JSON schema, using delimiter method[/yellow]"
-            )
-
+            print("[green]✓ Server supports JSON schema structured outputs[/green]")
+        except BadRequestError as e:
+            error_info = e.body.get('error', {})
+            if (error_info.get('param') == 'response_format' and 
+                error_info.get('type') == 'invalid_request_error'):
+                self._use_structured_outputs = False
+                print(
+                    "[yellow]ℹ Server doesn't support JSON schema, using delimiter method[/yellow]"
+                )
+            else:
+                # Other BadRequestError (e.g., invalid model, etc.)
+                print(f"[red]⚠ Test call failed with BadRequestError:[/red] {error_info.get('message', str(e))}")
+                print("[yellow]Will try JSON schema in actual translation calls[/yellow]")
+                # Don't set _use_structured_outputs - keep it None to retry later
+        except Exception as e:
+            # Other exceptions (RateLimitError, network issues, etc.)
+            print(f"[red]⚠ Test call failed with {type(e).__name__}:[/red] {str(e)}")
+            print("[yellow]Will try JSON schema in actual translation calls[/yellow]")
+            # Don't set _use_structured_outputs - keep it None to retry later
     def rotate_key(self):
         with self._api_lock:
             self.openai_client.api_key = next(self.keys)
